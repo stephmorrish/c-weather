@@ -1,3 +1,4 @@
+using WeatherApp.Api.Data;
 using WeatherApp.Api.Models;
 using WeatherApp.Api.Services;
 
@@ -8,6 +9,7 @@ namespace WeatherApp.Api.Endpoints;
 public static class WeatherEndpoints
 {
     private const int MaxQueryLength = 100;
+    private const int DefaultListLimit = 10;
 
     public static IEndpointRouteBuilder MapWeatherEndpoints(this IEndpointRouteBuilder app)
     {
@@ -34,7 +36,7 @@ public static class WeatherEndpoints
         });
 
         api.MapGet("/weather", async (
-            double? lat, double? lon, string? name, string? country, string? admin1,
+            double? lat, double? lon, string? name, string? country, string? admin1, bool? logSearch,
             WeatherService weather, CancellationToken ct) =>
         {
             var errors = new Dictionary<string, string[]>();
@@ -53,11 +55,24 @@ public static class WeatherEndpoints
                 Latitude: lat!.Value,
                 Longitude: lon!.Value);
 
-            return Results.Ok(await weather.GetWeatherAsync(location, ct));
+            return Results.Ok(await weather.GetWeatherAsync(location, logSearch ?? false, ct));
         });
 
-        // Phase 2 adds a database check here.
-        api.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+        // These two talk to the repository directly. There's no business logic to add,
+        // and limit validation happens in PL/SQL (an out-of-range limit raises ORA-20001,
+        // which becomes a 400).
+        api.MapGet("/history", async (int? limit, IWeatherRepository repository, CancellationToken ct) =>
+            Results.Ok(await repository.GetRecentSearchesAsync(limit ?? DefaultListLimit, ct)));
+
+        api.MapGet("/stats", async (int? limit, IWeatherRepository repository, CancellationToken ct) =>
+            Results.Ok(await repository.GetSearchStatsAsync(limit ?? DefaultListLimit, ct)));
+
+        api.MapGet("/health", async (IWeatherRepository repository, CancellationToken ct) =>
+        {
+            var databaseOk = await repository.CanConnectAsync(ct);
+            // The API itself is healthy even if the database isn't, because weather still works.
+            return Results.Ok(new { status = "ok", database = databaseOk ? "ok" : "unavailable" });
+        });
 
         return app;
     }

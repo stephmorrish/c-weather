@@ -1,0 +1,31 @@
+# Local Oracle Database Free for development.
+#   Start:   docker compose up -d
+#   Logs:    docker compose logs -f oracle      (wait for "DATABASE IS READY TO USE!")
+#   Stop:    docker compose down                (data is kept in the oracle-data volume)
+#   Reset:   docker compose down -v             (deletes the data; scripts re-run on next start)
+#
+# The passwords below are local development defaults. Override them with a .env file
+# (git-ignored) if you like; keep appsettings.Development.json in sync.
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: weather-oracle
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-OracleAdmin123}      # SYS / SYSTEM password
+      APP_USER: weather_app                                     # schema our API uses
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD:-WeatherApp123}
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      - ./database/init:/container-entrypoint-initdb.d:ro       # run once, on first start
+      - ./database/sql:/opt/weather-sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+volumes:
+  oracle-data:

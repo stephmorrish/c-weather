@@ -4,11 +4,24 @@
 ### Search for a location
 GET {{host}}/api/locations/search?q=Toronto
 
-### Current weather for Toronto
-GET {{host}}/api/weather?lat=43.70&lon=-79.42&name=Toronto&country=Canada&admin1=Ontario
+### Current weather for Toronto, recorded in search history
+# Send it twice: the second response has "fromCache": true.
+GET {{host}}/api/weather?lat=43.70643&lon=-79.39864&name=Toronto&country=Canada&admin1=Ontario&logSearch=true
+
+### Refresh (not recorded in history)
+GET {{host}}/api/weather?lat=43.70643&lon=-79.39864&name=Toronto&country=Canada&admin1=Ontario
+
+### Recent searches
+GET {{host}}/api/history
+
+### Most-searched locations
+GET {{host}}/api/stats?limit=5
+
+### Invalid limit: PL/SQL raises ORA-20001, and the API returns 400
+GET {{host}}/api/history?limit=500
 
 ### Validation error (400)
 GET {{host}}/api/weather?lat=200
 
-### Health check
+### Health check (includes the database)
 GET {{host}}/api/health

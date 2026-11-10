@@ -1,4 +1,6 @@
+using System.Data.Common;
 using Microsoft.AspNetCore.Diagnostics;
+using Oracle.ManagedDataAccess.Client;
 using WeatherApp.Api.Services;
 
 namespace WeatherApp.Api.Errors;
@@ -14,26 +16,51 @@ public sealed class ApiExceptionHandler(
     IProblemDetailsService problemDetails,
     ILogger<ApiExceptionHandler> logger) : IExceptionHandler
 {
+    // Must match weather_pkg.c_invalid_input (-20001). ODP.NET reports it as a positive number.
+    private const int OracleInvalidInput = 20001;
+
     public async ValueTask<bool> TryHandleAsync(HttpContext context, Exception exception, CancellationToken ct)
     {
-        if (exception is not WeatherApiException)
+        // A switch expression over the exception's type. Order matters: OracleException is
+        // also a DbException, so the more specific pattern has to come first.
+        (int Status, string Title, string Detail)? problem = exception switch
+        {
+            WeatherApiException => (StatusCodes.Status503ServiceUnavailable,
+                "Weather service unavailable", exception.Message),
+
+            // Our own RAISE_APPLICATION_ERROR: the message is safe and useful to show.
+            OracleException { Number: OracleInvalidInput } oracle => (StatusCodes.Status400BadRequest,
+                "Invalid request", CleanOracleMessage(oracle.Message)),
+
+            // Any other database error: don't leak internal details to the browser.
+            DbException => (StatusCodes.Status503ServiceUnavailable,
+                "Database unavailable", "Search history is unavailable right now. Weather still works."),
+
+            _ => null
+        };
+
+        if (problem is null)
         {
             return false;
         }
 
-        logger.LogWarning("Returning 503: {Message}", exception.Message);
+        var (status, title, detail) = problem.Value;
+        logger.LogWarning(exception, "Returning {Status}: {Title}", status, title);
 
-        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        context.Response.StatusCode = status;
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = context,
             Exception = exception,
-            ProblemDetails =
-            {
-                Status = StatusCodes.Status503ServiceUnavailable,
-                Title = "Weather service unavailable",
-                Detail = exception.Message
-            }
+            ProblemDetails = { Status = status, Title = title, Detail = detail }
         });
+    }
+
+    // "ORA-20001: Limit must be between 1 and 50.\nORA-06512: at ..." → "Limit must be between 1 and 50."
+    private static string CleanOracleMessage(string message)
+    {
+        var firstLine = message.Split('\n')[0];
+        var colon = firstLine.IndexOf(": ", StringComparison.Ordinal);
+        return colon >= 0 ? firstLine[(colon + 2)..].Trim() : firstLine.Trim();
     }
 }

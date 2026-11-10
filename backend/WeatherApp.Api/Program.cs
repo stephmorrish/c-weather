@@ -1,3 +1,4 @@
+using WeatherApp.Api.Data;
 using WeatherApp.Api.Endpoints;
 using WeatherApp.Api.Errors;
 using WeatherApp.Api.Services;
@@ -18,6 +19,8 @@ builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 
 builder.Services.Configure<OpenMeteoOptions>(
     builder.Configuration.GetSection(OpenMeteoOptions.SectionName));
+builder.Services.Configure<CacheOptions>(
+    builder.Configuration.GetSection(CacheOptions.SectionName));
 
 // AddHttpClient registers OpenMeteoClient as the IOpenMeteoClient implementation and
 // gives it a pooled HttpClient. AddStandardResilienceHandler wraps every request with
@@ -31,6 +34,9 @@ builder.Services
     });
 
 builder.Services.AddSingleton(TimeProvider.System);
+// Singleton is fine: the repository holds only a connection string, and ODP.NET
+// manages the connection pool itself.
+builder.Services.AddSingleton<IWeatherRepository, OracleWeatherRepository>();
 builder.Services.AddScoped<WeatherService>();
 
 // CORS lets a page on another origin (the React dev server) call this API directly.
