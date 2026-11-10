@@ -1,0 +1,14 @@
+# Sample requests. In VS Code, install the "REST Client" extension and click "Send Request".
+@host = http://localhost:5025
+
+### Search for a location
+GET {{host}}/api/locations/search?q=Toronto
+
+### Current weather for Toronto
+GET {{host}}/api/weather?lat=43.70&lon=-79.42&name=Toronto&country=Canada&admin1=Ontario
+
+### Validation error (400)
+GET {{host}}/api/weather?lat=200
+
+### Health check
+GET {{host}}/api/health
