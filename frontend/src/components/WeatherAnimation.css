@@ -1,0 +1,210 @@
+/* The animated sky behind the top of the weather card.
+   Everything moves with CSS @keyframes, using transform/opacity only: the browser can
+   animate those on the GPU without recalculating layout, so it stays smooth. */
+
+.scene {
+  --sky-top: #2f7fd1;
+  --sky-bottom: #6db4ea;
+  --cloud: rgb(255 255 255 / 90%);
+
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(var(--sky-top), var(--sky-bottom));
+  /* Makes this box a "size container", so the keyframes below can use cqw/cqh
+     (1% of this box's width/height) to move things exactly across the card. */
+  container-type: size;
+}
+
+/* Darken the left side slightly so the white text on top always stays readable. */
+.scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(0 0 0 / 28%), rgb(0 0 0 / 5%) 65%);
+}
+
+/* ---------- Skies: one gradient per condition, day and night ---------- */
+.scene--day.scene--clear          { --sky-top: #2f7fd1; --sky-bottom: #6db4ea; }
+.scene--day.scene--partly-cloudy  { --sky-top: #3a78bd; --sky-bottom: #84b3dd; }
+.scene--day.scene--cloudy         { --sky-top: #56697f; --sky-bottom: #8c9cae; --cloud: rgb(226 232 240 / 85%); }
+.scene--day.scene--fog            { --sky-top: #69778a; --sky-bottom: #a2acb8; }
+.scene--day.scene--drizzle,
+.scene--day.scene--rain           { --sky-top: #3c5266; --sky-bottom: #6c8195; --cloud: rgb(196 207 219 / 90%); }
+.scene--day.scene--snow           { --sky-top: #5a7290; --sky-bottom: #98abc1; --cloud: rgb(230 236 244 / 90%); }
+.scene--thunderstorm              { --sky-top: #1f2533; --sky-bottom: #444e62; --cloud: rgb(104 114 134 / 95%); }
+
+.scene--night                     { --sky-top: #0b1430; --sky-bottom: #28366a; --cloud: rgb(150 162 186 / 50%); }
+.scene--night.scene--cloudy,
+.scene--night.scene--fog          { --sky-top: #1b222f; --sky-bottom: #3a4456; }
+.scene--night.scene--drizzle,
+.scene--night.scene--rain         { --sky-top: #131b27; --sky-bottom: #2c394a; }
+.scene--night.scene--snow         { --sky-top: #1d283a; --sky-bottom: #44546b; --cloud: rgb(180 192 212 / 60%); }
+
+/* ---------- Sun ---------- */
+.scene__sun {
+  position: absolute;
+  top: 18%;
+  right: 12%;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff6c9 0%, #ffd45c 55%, #ffb627 100%);
+  box-shadow: 0 0 40px 10px rgb(255 214 92 / 55%);
+  animation: sun-glow 4s ease-in-out infinite alternate;
+}
+
+/* Rays: a striped conic gradient around the sun, slowly rotating. */
+.scene__sun::before {
+  content: '';
+  position: absolute;
+  inset: -46px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgb(255 236 160 / 45%) 0deg 7deg, transparent 7deg 22deg);
+  /* The mask fades the rays out toward their tips. */
+  mask: radial-gradient(circle, transparent 38%, #000 42%, transparent 72%);
+  animation: spin 40s linear infinite;
+}
+
+@keyframes sun-glow {
+  from { box-shadow: 0 0 30px 6px rgb(255 214 92 / 45%); }
+  to   { box-shadow: 0 0 55px 16px rgb(255 214 92 / 65%); }
+}
+
+@keyframes spin {
+  to { rotate: 360deg; }
+}
+
+/* ---------- Moon & stars ---------- */
+/* A crescent: a transparent circle whose offset box-shadow is the visible moon. */
+.scene__moon {
+  position: absolute;
+  top: 16%;
+  right: 16%;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  box-shadow: 14px 8px 0 0 #f3efd6;
+  filter: drop-shadow(0 0 14px rgb(255 248 214 / 55%));
+}
+
+.scene__star {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #fff;
+  animation: twinkle 4s ease-in-out var(--delay) infinite;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.25; scale: 1; }
+  50%      { opacity: 1;    scale: 1.6; }
+}
+
+/* ---------- Clouds ---------- */
+/* One pill shape plus two circles (::before / ::after) make a cartoon cloud. */
+.scene__cloud {
+  position: absolute;
+  top: var(--y);
+  left: 0;
+  width: 120px;
+  height: 38px;
+  border-radius: 38px;
+  background: var(--cloud);
+  scale: var(--scale);
+  animation: drift var(--duration) linear var(--delay) infinite;
+}
+
+.scene__cloud::before,
+.scene__cloud::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: inherit;
+}
+
+.scene__cloud::before { width: 50px; height: 50px; top: -24px; left: 18px; }
+.scene__cloud::after  { width: 64px; height: 64px; top: -34px; left: 46px; }
+
+@keyframes drift {
+  from { translate: -180px 0; }
+  to   { translate: calc(100cqw + 60px) 0; }
+}
+
+/* ---------- Fog ---------- */
+.scene__fog {
+  position: absolute;
+  top: var(--y);
+  left: -20%;
+  width: 140%;
+  height: 34px;
+  border-radius: 34px;
+  background: rgb(255 255 255 / 30%);
+  filter: blur(10px);
+  animation: fog-slide var(--duration) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes fog-slide {
+  from { translate: -12cqw 0; }
+  to   { translate: 12cqw 0; }
+}
+
+/* ---------- Rain ---------- */
+.scene__drop {
+  position: absolute;
+  top: -20px;
+  left: var(--x);
+  width: 1.5px;
+  height: 18px;
+  background: linear-gradient(transparent, rgb(220 235 255 / 75%));
+  rotate: 12deg;
+  animation: fall var(--duration) linear var(--delay) infinite;
+}
+
+.scene--drizzle .scene__drop {
+  height: 10px;
+  opacity: 0.7;
+}
+
+@keyframes fall {
+  to { translate: -22px calc(100cqh + 40px); }
+}
+
+/* ---------- Snow ---------- */
+.scene__flake {
+  position: absolute;
+  top: -10px;
+  left: var(--x);
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.9;
+  animation: snowfall var(--duration) linear var(--delay) infinite;
+}
+
+/* Three keyframes make the flake sway sideways as it falls. */
+@keyframes snowfall {
+  0%   { translate: 0 0; }
+  50%  { translate: var(--sway) calc(50cqh + 10px); }
+  100% { translate: 0 calc(100cqh + 20px); }
+}
+
+/* ---------- Lightning ---------- */
+.scene__lightning {
+  position: absolute;
+  inset: 0;
+  background: rgb(235 240 255);
+  opacity: 0;
+  animation: flash 7s linear infinite;
+}
+
+/* Long stretches of nothing, then a double flicker. */
+@keyframes flash {
+  0%, 88%, 90.5%, 92.5%, 100% { opacity: 0; }
+  89%   { opacity: 0.75; }
+  91.5% { opacity: 0.5; }
+}
