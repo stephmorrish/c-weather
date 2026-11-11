@@ -27,6 +27,7 @@ A full-stack weather app with a **C# (ASP.NET Core) API**, an **Oracle database 
   - Clear error messages, with a Retry button.
 - **Recent searches**, stored in Oracle.
 - Remembers your last city and refresh settings, and supports light and dark mode on desktop and mobile.
+- **Automated tests** at every layer: C# (xUnit), PL/SQL (a test script run inside Oracle) and JavaScript (Vitest).
 
 Weather data comes from [Open-Meteo](https://open-meteo.com/), which is free and needs no API key.
 
@@ -207,6 +208,56 @@ docker compose up -d
 
 ---
 
+## Running the tests
+
+The project has three test suites, one for each language.
+
+| Suite | Tests | What it covers | Needs |
+|---|---|---|---|
+| C# (xUnit) | 44 | weather-code mapping, the Open-Meteo client, caching and fallback rules, API endpoints | nothing else running |
+| PL/SQL | 23 | every procedure in `weather_pkg`, including invalid input | Oracle running |
+| JavaScript (Vitest) | 15 | API error handling, formatting helpers | nothing else running |
+
+### C# tests (xUnit)
+```bash
+cd backend
+dotnet test
+```
+
+For one line per test, add `--logger "console;verbosity=normal"`. To run only some tests, add a filter such as `--filter WeatherServiceTests`.
+
+The tests never call the real Open-Meteo API or Oracle. Instead they use **fakes**: small hand-written classes that implement the same interfaces (`IOpenMeteoClient`, `IWeatherRepository`), so each test decides exactly what happens. There are four kinds of test:
+
+| File | Kind | What it shows |
+|---|---|---|
+| [`WeatherCodeMapperTests.cs`](backend/WeatherApp.Tests/WeatherCodeMapperTests.cs) | Unit | `[Theory]` + `[InlineData]`: one test method, many input rows |
+| [`OpenMeteoClientTests.cs`](backend/WeatherApp.Tests/OpenMeteoClientTests.cs) | Unit | Replacing `HttpClient`'s message handler with a stub; why `InvariantCulture` matters (the test switches to French) |
+| [`WeatherServiceTests.cs`](backend/WeatherApp.Tests/WeatherServiceTests.cs) | Unit | Arrange / Act / Assert; fake repository and client; `FakeTimeProvider` to control "now" |
+| [`ApiEndpointTests.cs`](backend/WeatherApp.Tests/ApiEndpointTests.cs) | Integration | `WebApplicationFactory` runs the whole API in memory and sends real HTTP requests; checks 400 / 503 responses |
+
+### PL/SQL tests
+With Oracle running, from the project root:
+```bash
+docker exec -i weather-oracle sqlplus -s weather_app/WeatherApp123@//localhost/FREEPDB1 < database/tests/test_weather_pkg.sql
+```
+
+The script prints `PASS` or `FAIL` for each check, then a summary. If any check fails, it exits with an error code.
+
+Every test writes real rows, and the script ends with `ROLLBACK`, so your data is left exactly as it was. See [`database/tests/test_weather_pkg.sql`](database/tests/test_weather_pkg.sql). It uses nested assertion procedures, `EXECUTE IMMEDIATE` to check that bad input raises `ORA-20001`, and `FETCH` from REF CURSORs into record types. For larger projects, the [utPLSQL](https://www.utplsql.org/) framework does the same job with more features.
+
+### JavaScript tests (Vitest)
+```bash
+cd frontend
+npm test              # run once
+npm run test:watch    # re-run whenever a file changes
+```
+
+Test files live next to the code they test (`*.test.js`). [`weatherApi.test.js`](frontend/src/api/weatherApi.test.js) replaces `fetch` with a fake (`vi.stubGlobal`) to check how each kind of server response is handled.
+
+> **The tests already found a real bug.** `timeAgo()` showed "90 minutes ago" as "1 hour ago". In JavaScript, `Math.round(-1.5)` is `-1` but `Math.round(1.5)` is `2`, so rounding negative numbers was lopsided. The fix is in [`format.js`](frontend/src/utils/format.js).
+
+---
+
 ## Project structure
 
 ```
@@ -214,7 +265,8 @@ c-weather/
 ├── docker-compose.yml          Oracle Database Free container
 ├── database/
 │   ├── init/                   Startup script (runs the SQL files as WEATHER_APP)
-│   └── sql/                    Tables, PL/SQL package spec and body
+│   ├── sql/                    Tables, PL/SQL package spec and body
+│   └── tests/                  PL/SQL test script
 ├── backend/WeatherApp.Api/     C# ASP.NET Core Web API
 │   ├── Program.cs              Dependency injection and middleware setup
 │   ├── Endpoints/              API routes
@@ -222,12 +274,15 @@ c-weather/
 │   ├── Data/                   Oracle repository (calls weather_pkg)
 │   ├── Errors/                 Turns exceptions into HTTP responses
 │   └── Models/                 Request and response records
+├── backend/WeatherApp.Tests/   xUnit tests
+│   └── Fakes/                  Fake Open-Meteo client and repository
 └── frontend/                   React app (Vite, JavaScript)
     └── src/
         ├── api/                fetch wrapper and error handling
         ├── hooks/              useWeather, useSearchHistory, useDebounce, useNow
         ├── components/         SearchBar, WeatherCard, WeatherAnimation, ...
         └── utils/              Formatting helpers
+                                (*.test.js files next to the code are Vitest tests)
 ```
 
 ---
@@ -242,6 +297,7 @@ The project was built in phases. Each one is a separate git commit (`git log --o
 | 2. Oracle + PL/SQL | [`database/sql/`](database/sql/), [`Data/OracleWeatherRepository.cs`](backend/WeatherApp.Api/Data/OracleWeatherRepository.cs) | package spec vs body, `MERGE`, `SYS_REFCURSOR`, `RAISE_APPLICATION_ERROR`, `%TYPE`, NULL logic, analytic functions (`RANK`, `RATIO_TO_REPORT`), bind variables, ODP.NET `BindByName` |
 | 3. React UI | [`frontend/src/`](frontend/src/) | components and props, custom hooks, effects with cleanup, `AbortController`, derived state, debouncing, accessible combobox |
 | 4. Animations + refresh | [`WeatherAnimation.*`](frontend/src/components/), [`useWeather.js`](frontend/src/hooks/useWeather.js) | CSS `@keyframes`, custom properties, container query units, pure rendering, timers, `visibilitychange` |
+| 5. Tests | [`WeatherApp.Tests/`](backend/WeatherApp.Tests/), [`database/tests/`](database/tests/), `*.test.js` | xUnit `[Fact]`/`[Theory]`, fakes vs real dependencies, `WebApplicationFactory`, `FakeTimeProvider`; PL/SQL assertions with `ROLLBACK`; Vitest and mocking `fetch` |
 
 ### Practice exercises
 
@@ -250,6 +306,7 @@ The project was built in phases. Each one is a separate git commit (`git log --o
 3. **C#:** add a daily forecast. Request `daily=temperature_2m_max,temperature_2m_min` from Open-Meteo and add the matching DTOs and models.
 4. **CSS:** add a "windy" effect, with more slanted rain and faster clouds, when `windSpeed` is over 30 km/h.
 5. **SQL:** write a query for the warmest and coldest reading for each location, using `MAX`/`MIN` with `KEEP (DENSE_RANK FIRST ...)`.
+6. **Testing:** write the tests first for exercise 1 (`purge_old_readings`) in `test_weather_pkg.sql`, watch them fail, then write the procedure until they pass. This is test-driven development.
 
 ---
 

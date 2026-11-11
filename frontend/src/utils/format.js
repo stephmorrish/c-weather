@@ -25,10 +25,15 @@ const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
 
 // "5 minutes ago", "yesterday", ...
 export function timeAgo(iso, now = Date.now()) {
-  const seconds = Math.round((new Date(iso).getTime() - now) / 1000)
+  const seconds = (new Date(iso).getTime() - now) / 1000
   const abs = Math.abs(seconds)
+  // Round the size of the gap, then restore the sign. Math.round(-1.5) is -1 but
+  // Math.round(1.5) is 2 (JavaScript rounds .5 up toward +∞), so rounding a negative
+  // number directly would show "90 minutes ago" as "1 hour ago".
+  const inUnits = (unitSeconds) => Math.sign(seconds) * Math.round(abs / unitSeconds)
+
   if (abs < 60) return relative.format(0, 'second')          // "now"
-  if (abs < 3600) return relative.format(Math.round(seconds / 60), 'minute')
-  if (abs < 86400) return relative.format(Math.round(seconds / 3600), 'hour')
-  return relative.format(Math.round(seconds / 86400), 'day')
+  if (abs < 3600) return relative.format(inUnits(60), 'minute')
+  if (abs < 86400) return relative.format(inUnits(3600), 'hour')
+  return relative.format(inUnits(86400), 'day')
 }
